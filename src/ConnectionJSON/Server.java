@@ -1,4 +1,4 @@
-package Connection;
+package ConnectionJSON;
 
 import java.awt.Color;
 import java.awt.event.ActionEvent;
@@ -60,6 +60,7 @@ public class Server extends javax.swing.JFrame {
                 {
                     //Accept a new connection
                     Socket clientSock = serverSock.accept();
+                    String clientIP = clientSock.getInetAddress().getHostAddress();
                     
                     //Create a new thread object
                     Thread listener = new Thread(new ClientHandler(clientSock));
@@ -120,17 +121,18 @@ public class Server extends javax.swing.JFrame {
             	
             	while ((message = netin.readLine()) != null) {
         	        
-            		String[] data = message.split("&");
-            		
-            		Vector<Object> tableRow = new Vector<Object>();
+            		JSONParser parser = new JSONParser();
+        	        JSONArray arrJSON = (JSONArray) parser.parse(message);
+        	        
+                    Vector<Object> tableRow = new Vector<Object>();
 
-                    if(data[0].equals("connection")) {
+                    if(arrJSON.get(0).equals("connection")) {
                     	
-                    	gunName 		= data[1];
-                        softwareVersion = data[2];
-                        deviceType 		= data[3];
+                        gunName 		= (String) arrJSON.get(1);
+                        softwareVersion = (String) arrJSON.get(2);
+                        deviceType 		= (String) arrJSON.get(3);
                         
-                    	tableRow.add(clientIP);
+                        tableRow.add(clientIP);
                         tableRow.add(gunName);
                         tableRow.add(softwareVersion);
                         tableRow.add((new java.util.Date()).toString());
@@ -142,27 +144,30 @@ public class Server extends javax.swing.JFrame {
                        
                         txtAreaOutputAppendAtLast(clientIP + " - Connected.");
                         
-                    } else if (data[0].equals("disconnection")) {
+                    } else if (arrJSON.get(0).equals("disconnection")) {
                     	
                     	tableModel.removeRow(clientSockets.indexOf(socket));
                     	clientSockets.remove(socket);
                     			
                         txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
                     	
-                    } else if (data[0].equals("message")) {
+                    } else if (arrJSON.get(0).equals("message")) {
                         
-                        tableModel.setValueAt(data[1], clientSockets.indexOf(socket), 5);
+                        tableModel.setValueAt(arrJSON.get(1), clientSockets.indexOf(socket), 5);
                         
-                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + data[1] + "");
+                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + arrJSON.get(1) + "");
                         
                         SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         String date = dateformat.format(new java.util.Date());
                         
                         String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, receivemessage, receiveat)" + 
-                        			   " VALUES('" + clientIP + "', '" + gunName + "', '" + softwareVersion + "', '" + deviceType + "', '" + data[1] + "', '" + (date) + "')";
+                        			   " VALUES('" + clientIP + "', '" + gunName + "', '" + softwareVersion + "', '" + deviceType + "', '" + arrJSON.get(1) + "', '" + (date) + "')";
                         dbStatement.executeUpdate(query);
                         
-                        netout.println(data[1]);
+                        JSONArray arrJSON2 = new JSONArray();
+                        arrJSON2.add(arrJSON.get(1));
+        				
+        				netout.println(arrJSON2.toJSONString());
                         netout.flush();
             			
                     }
@@ -452,17 +457,13 @@ public class Server extends javax.swing.JFrame {
                 			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
                 dbStatement.executeUpdate(query);
                 
-				/*
-                JSONArray arrJSON = new JSONArray();
+				JSONArray arrJSON = new JSONArray();
 				arrJSON.add(firstVal);
 				arrJSON.add(secondVal);
 				arrJSON.add(thirdVal);
-				netout.println(arrJSON.toJSONString());
-                netout.flush();*/
 				
-				netout.println(firstVal + "&" + secondVal + "&" + thirdVal);
-				netout.flush();
-                
+				netout.println(arrJSON.toJSONString());
+                netout.flush();
                 
             }
     		
@@ -493,14 +494,12 @@ public class Server extends javax.swing.JFrame {
                 			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
                 dbStatement.executeUpdate(query);
 
-				/*JSONArray arrJSON = new JSONArray();
+				JSONArray arrJSON = new JSONArray();
 				arrJSON.add(firstVal);
 				arrJSON.add(secondVal);
 				arrJSON.add(thirdVal);
+				
 				netout.println(arrJSON.toJSONString());
-				netout.flush();*/
-                
-                netout.println(firstVal + "&" + secondVal + "&" + thirdVal);
 				netout.flush();
             }
     	} catch (Exception e) {}
@@ -533,13 +532,12 @@ public class Server extends javax.swing.JFrame {
                 			   " VALUES('" + clientIP + "', '', '', '', '" + message + "', '" + (date) + "')";
                 dbStatement.executeUpdate(query);
                 
-				/*JSONArray arrJSON = new JSONArray();
-				arrJSON.add(message);				
+				JSONArray arrJSON = new JSONArray();
+				arrJSON.add(message);
+				
 				netout.println(arrJSON.toJSONString());
-                netout.flush();*/
-                
-                netout.println(message);
                 netout.flush();
+                
             }
     		
     	} catch (Exception e) {
