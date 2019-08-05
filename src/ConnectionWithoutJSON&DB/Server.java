@@ -1,35 +1,172 @@
 package Connection;
 
 import java.awt.Color;
+import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 
+import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JPopupMenu;
+import javax.swing.JSeparator;
+import javax.swing.JTable;
+import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
 
-import org.json.simple.JSONArray;
-import org.json.simple.parser.JSONParser;
-
-public class Server extends javax.swing.JFrame {
+public class Server extends javax.swing.JFrame{
     
+    ArrayList<PrintWriter> clientOutputStreams;
+    ArrayList<String> users;
+    Vector<String> clientdata = new Vector<String>();
     Vector<Socket> clientSockets = new Vector<Socket>();
-    DefaultTableModel tableModel;
-    Statement dbStatement;
+    Socket sock;
+    String clientIP = "";
+    
+    DefaultTableModel model;
+    
+    Statement stmt;
+
+    public class ClientHandler implements Runnable{
+    	InputStreamReader isReader;
+        BufferedReader reader;
+        PrintWriter client;
+        String clientName = "";
+        String gunName = "";
+        String softVersion = "";
+        String devType = "";
+        
+        //Constructor
+        public ClientHandler(Socket clientSocket, PrintWriter user) 
+       {
+            client = user;
+            try 
+            {
+                sock = clientSocket;
+                
+                //Get client IP Address
+                clientIP = sock.getInetAddress().getHostAddress();
+                
+                clientSockets.add(clientSocket);
+                //get input from server -> client
+                isReader = new InputStreamReader(sock.getInputStream());
+                reader = new BufferedReader(isReader);
+                
+                clientName = isReader.toString();
+                //System.out.println(clientName);
+                clientdata.add(clientName);
+            }
+            catch (Exception ex) 
+            {
+                txtAreaOutputAppendAtLast("Unexpected error... " + ex);
+            }
+
+       }
+
+        @Override
+        public void run() {
+            String message; //connect = "Connect", disconnect = "Disconnect";
+            String[] data;
+            
+            try 
+            {
+                while ((message = reader.readLine()) != null) 
+                {
+                    data = message.split("&");
+                    
+                    Vector<Object> rowData = new Vector<Object>();
+
+                    if(data[0].equals("connection")) {
+                    	
+                        gunName = data[1];
+                        softVersion = data[2];
+                        devType = data[3];
+                        
+                        rowData.add(clientIP);
+                        rowData.add(gunName);
+                        rowData.add(softVersion);
+                        rowData.add((new java.util.Date()).toString());
+                        rowData.add(devType);
+                        rowData.add("");
+                        
+                        // Add row client into the table
+                        model.addRow(rowData);
+                       
+                        txtAreaOutputAppendAtLast(clientIP + " - Connected.");
+                        
+                    } else if (data[0].equals("disconnection")) {
+                    	
+                    	for (int i = 0; i < clientdata.size(); i++) {
+                            if(clientName.equals(clientdata.get(i))) {
+                        	model.removeRow(i);
+                        	clientdata.remove(i);
+                        	clientSockets.remove(i);
+                        	break;
+                            }
+                            txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
+                        }
+                    	
+                    } else if (data[0].equals("message")) {
+                        
+                        for (int i = 0; i < clientdata.size(); i++) {
+                        	if(clientName.equals(clientdata.get(i))) {
+                        		model.setValueAt(data[1], i, 5);
+                        		break;
+                        	}
+                        }
+                        
+                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + data[1] + "");
+                        
+                        SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        String date = dateformat.format(new java.util.Date());
+                        
+                        String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, receivemessage, receiveat)" + 
+                        			   " VALUES('" + clientIP + "', '" + gunName + "', '" + softVersion + "', '" + devType + "', '" + data[1] + "', '" + (date) + "')";
+                        stmt.executeUpdate(query);
+            			
+                    }
+                    
+                } 
+             } 
+             catch (Exception ex) 
+             {
+                //txtAreaOutput.append("Lost a connection. ");
+                ex.printStackTrace();
+                clientOutputStreams.remove(client);
+             } 
+        }
+        
+    }
+    
+    private void txtAreaOutputAppendAtLast(String newText) {
+    	
+    	txtAreaOutput.setForeground(Color.BLUE);
+    	
+    	String oldText = txtAreaOutput.getText();
+        txtAreaOutput.setText("");
+        txtAreaOutput.append(newText + "\n");
+        txtAreaOutput.append(oldText);
+        
+    }
     
     public Server() {
     	
     	initComponents();
-        try {
-        	
-        	/*Class.forName("com.mysql.jdbc.Driver");  
-    		Connection con=DriverManager.getConnection("jdbc:mysql:///lasertagdb","root","");  
-    		dbStatement=con.createStatement();*/
+        
+        try
+        {
+        	Class.forName("com.mysql.jdbc.Driver");  
+    		Connection con=DriverManager.getConnection("jdbc:mysql://localhost:3306/lasertagdb","root","");  
+    		stmt=con.createStatement();  
     		
     		Thread starter = new Thread(new ServerStart());
             starter.start();
@@ -39,146 +176,19 @@ public class Server extends javax.swing.JFrame {
         
             txtAreaOutputAppendAtLast("Server started...");
             
-        } catch (Exception e) {
-        	
-            System.out.println("Error: " + e);
-            
         }
-    }
-    
-    public class ServerStart implements Runnable 
-    {
-        public void run() 
+        catch (Exception e)
         {
-            try 
-            {
-                @SuppressWarnings("resource")
-				ServerSocket serverSock = new ServerSocket(2222);
-                
-                //running infinite loop for getting client request
-                while (true) 
-                {
-                    //Accept a new connection
-                    Socket clientSock = serverSock.accept();
-                    
-                    //Create a new thread object
-                    Thread listener = new Thread(new ClientHandler(clientSock));
-                    
-                    //Invoke start() method for thread
-                    listener.start();
-                    txtAreaOutputAppendAtLast(clientSock + ": is in connection. ");
-                }
-                
-            } catch (Exception e) {
-            	
-                txtAreaOutputAppendAtLast("Error making a connection. ");
-            }
+            System.out.println("Error: " + e);
         }
     }
-   
-    public class ClientHandler implements Runnable {
-    	
-    	Socket socket;
-        BufferedReader netin;
-        PrintWriter netout;
-        
-        String clientIP = "";
-        String gunName = "";
-        String softwareVersion = "";
-        String deviceType = "";
-        
-        //Constructor
-        public ClientHandler(Socket clientSocket) {
-        	
-            try {
-            	
-                socket = clientSocket;
-                
-                //Add a client socket in the vector named clientSockets
-                clientSockets.add(socket);
-                
-                //Get client IP Address
-                clientIP = socket.getInetAddress().getHostAddress();
-                
-                //Get a input stream of the client socket
-                netin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                //Get a output stream of the client socket
-                netout = new PrintWriter(socket.getOutputStream());
-
-                
-            } catch (Exception e) {
-                txtAreaOutputAppendAtLast("Unexpected error... " + e);
-            }
-
-        }
-
-        public void run() {
-        	
-            String message;            
-            try {
-            	
-            	while ((message = netin.readLine()) != null) {
-        	        
-            		String[] data = message.split("&");
-            		
-            		Vector<Object> tableRow = new Vector<Object>();
-
-                    if(data[0].equals("connection")) {
-                    	
-                    	gunName 		= data[1];
-                        softwareVersion = data[2];
-                        deviceType 		= data[3];
-                        
-                    	tableRow.add(clientIP);
-                        tableRow.add(gunName);
-                        tableRow.add(softwareVersion);
-                        tableRow.add((new java.util.Date()).toString());
-                        tableRow.add(deviceType);
-                        tableRow.add("");
-                        
-                        // Add a client row into the table
-                        tableModel.addRow(tableRow);
-                       
-                        txtAreaOutputAppendAtLast(clientIP + " - Connected.");
-                        
-                    } else if (data[0].equals("disconnection")) {
-                    	
-                    	tableModel.removeRow(clientSockets.indexOf(socket));
-                    	clientSockets.remove(socket);
-                    			
-                        txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
-                    	
-                    } else if (data[0].equals("message")) {
-                        
-                        tableModel.setValueAt(data[1], clientSockets.indexOf(socket), 5);
-                        
-                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + data[1] + "");
-                        
-                        /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                        String date = dateformat.format(new java.util.Date());
-                        
-                        String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, receivemessage, receiveat)" + 
-                        			   " VALUES('" + clientIP + "', '" + gunName + "', '" + softwareVersion + "', '" + deviceType + "', '" + data[1] + "', '" + (date) + "')";
-                        dbStatement.executeUpdate(query);*/
-                        
-                        //netout.println(data[1]);
-                        //netout.flush();
-            			
-                    }
-                    
-            	}
-            	
-            } catch (Exception ex) {
-            	
-            	 tableModel.removeRow(clientSockets.indexOf(socket));
-     			 clientSockets.remove(socket);
-     			
-     			 txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
-            } 
-        }
-    }
-    
+    /**
+     * This method is called from within the constructor to initialize the form.
+     * WARNING: Do NOT modify this code. The content of this method is always
+     * regenerated by the Form Editor.
+     */
+    @SuppressWarnings("unchecked")
     private void initComponents() {
 
         jPanel1 = new javax.swing.JPanel();
@@ -186,7 +196,7 @@ public class Server extends javax.swing.JFrame {
         lblMain = new javax.swing.JLabel();
         jPanel3 = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
-        tableClients = new javax.swing.JTable();
+        listClients = new javax.swing.JTable();
         jPanel4 = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
         jTextField1 = new javax.swing.JTextField();
@@ -223,9 +233,9 @@ public class Server extends javax.swing.JFrame {
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
-        tableClients.setAutoCreateRowSorter(true);
-		tableClients.setRowSelectionAllowed(true);
-		tableModel = new DefaultTableModel(0,0){
+        listClients.setAutoCreateRowSorter(true);
+		listClients.setRowSelectionAllowed(true);
+		model = new DefaultTableModel(0,0){
 
             private static final long serialVersionUID = 1L;
 
@@ -237,8 +247,8 @@ public class Server extends javax.swing.JFrame {
         };
         
         String header[] = new String[] { "IP Address", "Gun Name", "Software", "Last Seen", "Device Type", "Message Received" };
-        tableModel.setColumnIdentifiers(header);
-        tableClients.setModel(tableModel);
+        model.setColumnIdentifiers(header);
+        listClients.setModel(model);
         
         JPopupMenu popupMenu = new JPopupMenu();
         JMenuItem menuMessage1 = new JMenuItem("Message1");
@@ -249,7 +259,7 @@ public class Server extends javax.swing.JFrame {
         popupMenu.add(menuMessage2);
         popupMenu.add(menuMessage3);
         
-        tableClients.setComponentPopupMenu(popupMenu);	
+        listClients.setComponentPopupMenu(popupMenu);	
         
         menuMessage1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -269,9 +279,36 @@ public class Server extends javax.swing.JFrame {
             }
         });
         
-        tableClients.setRowSelectionAllowed(true);
-        tableClients.getTableHeader().setReorderingAllowed(false);
-        jScrollPane1.setViewportView(tableClients);
+        //Event after right click
+        /*listClients.addMouseListener(new MouseAdapter(){
+            //Create right menu pop up menu
+            final RowMenu rightMenu = new RowMenu(listClients);
+            @Override
+            public void mouseClicked(MouseEvent me){
+                //determine if right clicked
+                int r = listClients.rowAtPoint(me.getPoint());
+                if(r >= 0 && r < listClients.getRowCount()){
+                    listClients.setRowSelectionInterval(r, r);
+                } else {
+                    listClients.clearSelection();
+                }
+                
+                int rowindex = listClients.getSelectedRow();
+                if(rowindex < 0){
+                    return;
+                }                
+                if(me.isPopupTrigger() && me.getComponent() instanceof JTable)
+                {
+                    //JPopupMenu rightMenu = new RowMenu(listClients);
+                    //rightMenu.show(me.getComponent(), me.getX(), me.getY()); 
+                }
+            }
+        
+        });*/
+        
+        listClients.setRowSelectionAllowed(true);
+        listClients.getTableHeader().setReorderingAllowed(false);
+        jScrollPane1.setViewportView(listClients);
 
         javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
         jPanel3.setLayout(jPanel3Layout);
@@ -416,68 +453,80 @@ public class Server extends javax.swing.JFrame {
         pack();
     }
     
-    private void txtAreaOutputAppendAtLast(String newText) {
-    	
-    	txtAreaOutput.setForeground(Color.BLUE);
-    	
-    	String oldText = txtAreaOutput.getText();
-        txtAreaOutput.setText("");
-        txtAreaOutput.append(newText + "\n");
-        txtAreaOutput.append(oldText);
+    private void menuSendMesage(String message) {
         
-    }
-    
-    private void btnSendtoSelectActionPerformed(java.awt.event.ActionEvent evt) {
-        
-        try {
+    	try {
     		
-        	String firstVal  = jTextField1.getText();
-        	String secondVal = jTextField2.getText();
-        	String thirdVal  = jTextField3.getText();
-
-        	int[] selectedrows = tableClients.getSelectedRows();
+        	int[] selectedrows = listClients.getSelectedRows();
             
             for (int rowIndex = 0; rowIndex < selectedrows.length; rowIndex++) {
 
                 Socket socket = clientSockets.get(selectedrows[rowIndex]);
-            	PrintWriter netout = new PrintWriter(socket.getOutputStream());
-
+            	PrintWriter writer = new PrintWriter(socket.getOutputStream());
+            	
             	String clientIP = socket.getInetAddress().getHostAddress();
-            	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + firstVal + " " + secondVal + " " + thirdVal);
-
-                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + message);
+            	
+                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 String date = dateformat.format(new java.util.Date());
                 
                 String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
-                			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);*/
+                			   " VALUES('" + clientIP + "', '', '', '', '" + message + "', '" + (date) + "')";
+                stmt.executeUpdate(query);
+
                 
-				/*
-                JSONArray arrJSON = new JSONArray();
-				arrJSON.add(firstVal);
-				arrJSON.add(secondVal);
-				arrJSON.add(thirdVal);
-				netout.println(arrJSON.toJSONString());
-                netout.flush();*/
-				
-				netout.println(firstVal + "&" + secondVal + "&" + thirdVal);
-				netout.flush();
+            	writer.println(message);
+                writer.flush();
                 
-                
-            }
+           }
     		
     	} catch (Exception e) {
     		
     	}
     }
+    
+    private void btnSendtoSelectActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSendtoSelectActionPerformed
+        // TODO add your handling code here:
+        try {
+    		
+        	String firstVal = jTextField1.getText();
+        	String secondVal = jTextField2.getText();
+        	String thirdVal = jTextField3.getText();
 
-    private void btnSendtoAllActionPerformed(java.awt.event.ActionEvent evt) {
+        	int[] selectedrows = listClients.getSelectedRows();
+            
+            for (int rowIndex = 0; rowIndex < selectedrows.length; rowIndex++) {
 
-    	try {
+                Socket socket = clientSockets.get(selectedrows[rowIndex]);
+            	PrintWriter writer = new PrintWriter(socket.getOutputStream());
+
+            	String clientIP = socket.getInetAddress().getHostAddress();
+            	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + firstVal + " " + secondVal + " " + thirdVal);
+
+                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                String date = dateformat.format(new java.util.Date());
+                
+                String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
+                			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
+                stmt.executeUpdate(query);
+                
+            	writer.println(firstVal + "&" + secondVal + "&" + thirdVal);
+                writer.flush();
+                
+           }
+    		
+    	} catch (Exception e) {
+    		
+    	}
+    }//GEN-LAST:event_btnSendtoSelectActionPerformed
+
+    private void btnSendtoAllActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSendtoAllActionPerformed
+        // TODO add your handling code here:
+        try {
     		
     		for(int rowIndex = 0; rowIndex < clientSockets.size(); rowIndex++) {
                 Socket socket = clientSockets.get(rowIndex);
-                PrintWriter netout = new PrintWriter(socket.getOutputStream());
+                PrintWriter writer = new PrintWriter(socket.getOutputStream());
 
                 String firstVal = jTextField1.getText();
                 String secondVal = jTextField2.getText();
@@ -486,70 +535,42 @@ public class Server extends javax.swing.JFrame {
             	String clientIP = socket.getInetAddress().getHostAddress();
             	txtAreaOutputAppendAtLast("TX - EVERYONE - " + firstVal + " " + secondVal + " " + thirdVal);
 
-                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 String date = dateformat.format(new java.util.Date());
                 
                 String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
                 			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);*/
+                stmt.executeUpdate(query);
 
-				/*JSONArray arrJSON = new JSONArray();
-				arrJSON.add(firstVal);
-				arrJSON.add(secondVal);
-				arrJSON.add(thirdVal);
-				netout.println(arrJSON.toJSONString());
-				netout.flush();*/
-                
-                netout.println(firstVal + "&" + secondVal + "&" + thirdVal);
-				netout.flush();
+            	writer.println(firstVal + "&" + secondVal + "&" + thirdVal);
+                writer.flush();
             }
     	} catch (Exception e) {}
-    }
+    }//GEN-LAST:event_btnSendtoAllActionPerformed
 
-    private void btnClearLogActionPerformed(java.awt.event.ActionEvent evt) {
-        
+    private void btnClearLogActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnClearLogActionPerformed
+        // TODO add your handling code here:
         txtAreaOutput.setText("");
         
-    }
+    }//GEN-LAST:event_btnClearLogActionPerformed
+/**
+    private void listClientsMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_listClientsMouseClicked
 
-    private void menuSendMesage(String message) {
-        
-    	try {
-    		
-        	int[] selectedrows = tableClients.getSelectedRows();
-            
-            for (int rowIndex = 0; rowIndex < selectedrows.length; rowIndex++) {
+    }//GEN-LAST:event_listClientsMouseClicked
+*/
+    private void popupMenuMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_popupMenuMouseClicked
+        // TODO add your handling code here:
+    }//GEN-LAST:event_popupMenuMouseClicked
 
-                Socket socket = clientSockets.get(selectedrows[rowIndex]);
-            	PrintWriter netout = new PrintWriter(socket.getOutputStream());
-            	
-            	String clientIP = socket.getInetAddress().getHostAddress();
-            	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + message);
-            	
-                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                String date = dateformat.format(new java.util.Date());
-                
-                String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
-                			   " VALUES('" + clientIP + "', '', '', '', '" + message + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);*/
-                
-				/*JSONArray arrJSON = new JSONArray();
-				arrJSON.add(message);				
-				netout.println(arrJSON.toJSONString());
-                netout.flush();*/
-                
-                netout.println(message);
-                netout.flush();
-            }
-    		
-    	} catch (Exception e) {
-    		
-    	}
-    }
-    
-
+    /**
+     * @param args the command line arguments
+     */
     public static void main(String args[]) {
-        
+        /* Set the Nimbus look and feel */
+        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
+        /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.
+         * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
+         */
         try {
             for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
                 if ("Nimbus".equals(info.getName())) {
@@ -566,20 +587,100 @@ public class Server extends javax.swing.JFrame {
         } catch (javax.swing.UnsupportedLookAndFeelException ex) {
             java.util.logging.Logger.getLogger(Server.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
+        //</editor-fold>
         
+        
+
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
-            	
             	Server server = new Server();
-            	server.setVisible(true);
-				
-            	//Login login = new Login(server);
+            	Login login = new Login(server);
             	
+            	//server.setVisible(true);
             }
         });
     }
     
+     public class ServerStart implements Runnable 
+    {
+        @Override
+        public void run() 
+        {
+            clientOutputStreams = new ArrayList();
+            users = new ArrayList();  
+
+            try 
+            {
+                //Server is listening on port 2222
+                ServerSocket serverSock = new ServerSocket(2222);
+                
+                //running infinite loop for getting client request
+                while (true) 
+                {
+                    //Accept a new connection
+                    Socket clientSock = serverSock.accept();
+                    
+                    //Obtaining input and output streams
+                    PrintWriter writer = new PrintWriter(clientSock.getOutputStream());
+                    clientOutputStreams.add(writer);
+
+                    //Create a new thread object
+                    Thread listener = new Thread(new ClientHandler(clientSock, writer));
+                    //Invoke start() method for thread
+                    listener.start();
+                    txtAreaOutputAppendAtLast(clientSock + ": is in connection. ");
+                }
+            }
+            catch (Exception ex)
+            {
+                txtAreaOutputAppendAtLast("Error making a connection. ");
+            }
+        }
+    }
+     
+    class RowMenu 
+    {
+        public RowMenu(JTable listClients)
+        {
+            //Create right click menu
+            JMenuItem add = new JMenuItem("Add");
+            JMenuItem edit = new JMenuItem("Edit");
+            JMenuItem delete = new JMenuItem("Delete");
+            
+            //When Add Clicked
+            add.addActionListener(new ActionListener(){
+                @Override
+                public void actionPerformed(ActionEvent arg0){
+                    JOptionPane.showMessageDialog(add, "ADDED");
+                }
+            });
+            
+            //When Edit Clicked
+            edit.addActionListener(new ActionListener(){
+                @Override
+                public void actionPerformed(ActionEvent arg0){
+                    JOptionPane.showMessageDialog(add, "EDITED");
+                }
+            });
+            
+            //When Delete Clicked
+            delete.addActionListener(new ActionListener(){
+                @Override
+                public void actionPerformed(ActionEvent arg0){
+                    JOptionPane.showMessageDialog(add, "DELETED");
+                }
+            });
+            
+            //Add Items to Pop-up Menu
+            add(add);
+            add(edit);
+            add(new JSeparator());
+            add(delete);
+        }
+    
+    }
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnClearLog;
     private javax.swing.JButton btnSendtoAll;
@@ -598,157 +699,66 @@ public class Server extends javax.swing.JFrame {
     private javax.swing.JTextField jTextField2;
     private javax.swing.JTextField jTextField3;
     private javax.swing.JLabel lblMain;
-    public static javax.swing.JTable tableClients;
+    public static javax.swing.JTable listClients;
     private javax.swing.JPopupMenu popupMenu;
     private javax.swing.JMenuItem popupMenuItem;
     public static javax.swing.JTextArea txtAreaOutput;
     // End of variables declaration//GEN-END:variables
 }
 
-class Login extends JFrame{
+class Login implements ActionListener{
+	private JTextField txtUserName;
+	private JPasswordField txtPassword;
 	private Server server;
 	
-	private javax.swing.JButton btnForgotPassword;
-    private javax.swing.JButton btnLogin;
-    private javax.swing.JLabel jLabel1;
-    private javax.swing.JLabel jLabel2;
-    private javax.swing.JLabel jLabel3;
-    private javax.swing.JPanel jPanel1;
-    private javax.swing.JPanel jPanel2;
-    private javax.swing.JPanel jPanel3;
-    private javax.swing.JPasswordField txtPassword;
-    private javax.swing.JTextField txtUserName;
-    
+	JFrame frame;
+	
 	Login(Server server) {
 		
 		this.server = server;
-		
-		initComponents();
 
+		frame = new JFrame("User Login");
+		frame.setSize(300, 150);
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+		JPanel panel = new JPanel();
+		frame.add(panel);
+		initComponents(panel);
+
+		frame.setVisible(true);
 	}
 
-	private void initComponents() {
+	private void initComponents(JPanel panel) {
+
+		panel.setLayout(null);
+
+		JLabel lblUserName = new JLabel("User");
+		lblUserName.setBounds(10, 10, 80, 25);
+		panel.add(lblUserName);
+
+		txtUserName = new JTextField(20);
+		txtUserName.setBounds(100, 10, 160, 25);
+		panel.add(txtUserName);
+
+		JLabel lblPassword = new JLabel("Password");
+		lblPassword.setBounds(10, 40, 80, 25);
+		panel.add(lblPassword);
+
+		txtPassword = new JPasswordField(20);
+		txtPassword.setBounds(100, 40, 160, 25);
+		panel.add(txtPassword);
+
+		JButton loginButton = new JButton("login");
+		loginButton.setBounds(10, 80, 80, 25);
+		loginButton.addActionListener(this);
+		panel.add(loginButton);
 		
-	    jPanel1 = new javax.swing.JPanel();
-        jPanel2 = new javax.swing.JPanel();
-        jLabel1 = new javax.swing.JLabel();
-        jPanel3 = new javax.swing.JPanel();
-        btnLogin = new javax.swing.JButton();
-        jLabel2 = new javax.swing.JLabel();
-        jLabel3 = new javax.swing.JLabel();
-        txtPassword = new javax.swing.JPasswordField("ummi");
-        txtUserName = new javax.swing.JTextField("ummi");
-        btnForgotPassword = new javax.swing.JButton();
-
-        setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-
-        jLabel1.setFont(new java.awt.Font("Lucida Grande", 0, 36)); // NOI18N
-        jLabel1.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-
-        jLabel1.setFont(new java.awt.Font("Sitka Small", 1, 28)); // NOI18N
-        jLabel1.setText("Login");
-
-        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
-        jPanel2.setLayout(jPanel2Layout);
-        jPanel2Layout.setHorizontalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel2Layout.createSequentialGroup()
-                .addGap(178, 178, 178)
-                .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 102, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-        jPanel2Layout.setVerticalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
-                .addContainerGap(59, Short.MAX_VALUE)
-                .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 44, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(50, 50, 50))
-        );
-
-        btnLogin.setText("Login");
-        btnLogin.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnLoginActionPerformed(evt);
-            }
-        });
-
-        jLabel2.setText("Username:");
-
-        jLabel3.setText("Password:");
-
-        btnForgotPassword.setText("Forgot Password");
-
-        javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
-        jPanel3.setLayout(jPanel3Layout);
-        jPanel3Layout.setHorizontalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel3Layout.createSequentialGroup()
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(jPanel3Layout.createSequentialGroup()
-                        .addGap(60, 60, 60)
-                        .addComponent(btnLogin, javax.swing.GroupLayout.PREFERRED_SIZE, 118, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(btnForgotPassword)
-                        .addGap(3, 3, 3))
-                    .addGroup(jPanel3Layout.createSequentialGroup()
-                        .addGap(44, 44, 44)
-                        .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel2)
-                            .addComponent(jLabel3))
-                        .addGap(72, 72, 72)
-                        .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(txtPassword, javax.swing.GroupLayout.DEFAULT_SIZE, 181, Short.MAX_VALUE)
-                            .addComponent(txtUserName, javax.swing.GroupLayout.PREFERRED_SIZE, 178, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addGap(114, 114, 114))
-        );
-        jPanel3Layout.setVerticalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel3Layout.createSequentialGroup()
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel2)
-                    .addComponent(txtUserName, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(38, 38, 38)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel3)
-                    .addComponent(txtPassword, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(50, 50, 50)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(btnLogin, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(btnForgotPassword, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(185, Short.MAX_VALUE))
-        );
-
-        javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
-        jPanel1.setLayout(jPanel1Layout);
-        jPanel1Layout.setHorizontalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jPanel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-            .addComponent(jPanel3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-        );
-        jPanel1Layout.setVerticalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel1Layout.createSequentialGroup()
-                .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanel3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-
-        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
-        getContentPane().setLayout(layout);
-        layout.setHorizontalGroup(
-            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-        );
-        layout.setVerticalGroup(
-            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-        );
-
-        pack();
-        setVisible(true);
+		JButton registerButton = new JButton("register");
+		registerButton.setBounds(180, 80, 80, 25);
+		panel.add(registerButton);
 	}
 	
-	public void btnLoginActionPerformed(ActionEvent evt) {
+	public void actionPerformed(ActionEvent evt) {
 		
 		try{
 			
@@ -757,7 +767,7 @@ class Login extends JFrame{
 			
 			if (username.equals("") || password.equals("")) return;
 			
-			ResultSet rs = this.server.dbStatement.executeQuery("SELECT * FROM users");
+			ResultSet rs = this.server.stmt.executeQuery("SELECT * FROM users");
 			
 			while(rs.next()) {
 				
@@ -768,11 +778,11 @@ class Login extends JFrame{
 				   password.equals(dbPassword)) {
 					
 					this.server.setVisible(true);
-					setVisible(false);
+					frame.setVisible(false);
 				}
 			}
 			
-		} catch(Exception e) {System.out.println(e);}		
+		} catch(Exception e){ System.out.println(e);}		
 		
 	}
 }

@@ -1,79 +1,75 @@
 package Connection;
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+//package connectionclient;
 
 import java.net.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.*;
 import java.util.*;
 import java.util.Timer;
 
 import javax.swing.*;
 
-import org.json.simple.JSONArray;
-import org.json.simple.parser.JSONParser;
-
 public class ClientForm extends JFrame{
 
-    String serverIP, gunName, softwareVersion, deviceType;
+    String userName;
+    String ipAddress, gunName, softVersion, devType;
     
-    int serverPort = 2222;
+    ArrayList<String> users = new ArrayList();
+    int port = 2222;
     Boolean isConnected = false;
     
-    Socket socket;
-    BufferedReader netin;
-    PrintWriter netout;
+    Socket sock;
+    BufferedReader reader;
+    PrintWriter writer;
 
     Timer timer;
     boolean stopFlag = true;
     int globalCount = 0;
     
-    public ClientForm() {
-        initComponents();
-        
-        timer = new Timer("Timer");
-        
-        long delay  = 1000L;
-        long period = 1000L;
-
-        timer.scheduleAtFixedRate(repeatedTask, delay, period);
-    }
-
-    TimerTask repeatedTask = new TimerTask() {
-        public void run() {
-        	if (!stopFlag) {
-        		globalCount++;
-
-        		/*JSONArray arrJSON = new JSONArray();
-				arrJSON.add("message");
-				arrJSON.add(String.valueOf(globalCount));
-				netout.println(arrJSON.toJSONString());
-        		netout.flush();*/
-        		
-        		netout.println("message" + "&" + String.valueOf(globalCount));
-        		netout.flush();
-        	}
-        }
-    };
-
     public void ListenThread() 
     {
          Thread IncomingReader = new Thread(new IncomingReader());
          IncomingReader.start();
     }
     
+    public void userAdd(String data) 
+    {
+         users.add(data);
+    }
+    
+    public void userRemove(String data) 
+    {
+         ta_client.append(data + " is now offline.\n");
+    }
+    
+    public void writeUsers() 
+    {
+         String[] tempList = new String[(users.size())];
+         users.toArray(tempList);
+         for (String token:tempList) 
+         {
+             //users.append(token + "\n");
+         }
+    }
+    
     public void sendDisconnect() 
     {
+        //String bye = (username + ": : Disconnect");
+        String bye = "disconnection&";
+        
         try
         {
-        	/*JSONArray arrJSON = new JSONArray();
-			arrJSON.add("disconnection");
-			netout.println(arrJSON.toJSONString());
-            netout.flush();*/
-        	
-        	netout.println("disconnection");
-    		netout.flush();
-            
+            writer.println(bye); 
+            writer.flush(); 
         } catch (Exception e) 
         {
-            txtAreaOutput.append("Could not send disconnect message.\n");
+            ta_client.append("Could not send Disconnect message.\n");
         }
     }
     
@@ -81,10 +77,10 @@ public class ClientForm extends JFrame{
     {
         try 
         {
-            txtAreaOutput.append("Disconnected.\n");
-            socket.close();
+            ta_client.append("Disconnected.\n");
+            sock.close();
         } catch(Exception ex) {
-            txtAreaOutput.append("Failed to disconnect. \n");
+            ta_client.append("Failed to disconnect. \n");
         }
         isConnected = false;
         
@@ -99,40 +95,38 @@ public class ClientForm extends JFrame{
     }
     
     
+    public ClientForm() {
+        initComponents();
+        
+        timer = new Timer("Timer");
+        
+        long delay  = 1000L;
+        long period = 1000L;
+
+        timer.scheduleAtFixedRate(repeatedTask, delay, period);
+    }
+    
+	
+	
     public class IncomingReader implements Runnable
     {
         @Override
         public void run() 
         {
-            String message;
+            String[] data;
+            String stream, done = "Done", connect = "Connect", disconnect = "Disconnect";
             
             try 
             {
-                while ((message = netin.readLine()) != null)
+                while ((stream = reader.readLine()) != null) 
                 {
-                    /*JSONParser parser = new JSONParser();
-        	        JSONArray arrJSON = (JSONArray) parser.parse(message);
-
-                	if(arrJSON.size() != 0) {
-    					txtAreaOutput.append("Received from server:\n");
-                		for(int i = 0; i < arrJSON.size(); i++) {
-                			if(!arrJSON.get(i).equals("")) {                				
-                				txtAreaOutput.append(arrJSON.get(i) + "\n");   
-                			}
-                		}
-                	}*/
-                	
-                	
-                	String[] data = message.split("&");
-                	
-        	        if(data.length != 0) {
-						txtAreaOutput.append("Received from server3:\n");
-	            		for(int i = 0; i < data.length; i++) {
-	            			if(!data[i].equals("")) {                				
-	            				txtAreaOutput.append(data[i] + "\n");   
-	            			}
-	            		}
-            		}
+                     
+                	data = stream.split("&");
+                	if(data.length != 0) {
+    					ta_client.append("Received from server:\n");
+                		for(int i = 0; i < data.length; i++)
+                			if(!data[i].equals("")) ta_client.append(data[i] + "\n");
+                	}
 
                 }
            } catch(Exception ex) { }
@@ -140,6 +134,13 @@ public class ClientForm extends JFrame{
         }
     }
 
+    /**
+     * This method is called from within the constructor to initialize the form.
+     * WARNING: Do NOT modify this code. The content of this method is always
+     * regenerated by the Form Editor.
+     */
+    @SuppressWarnings("unchecked")
+    // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
         jFormattedTextField1 = new javax.swing.JFormattedTextField();
@@ -147,7 +148,7 @@ public class ClientForm extends JFrame{
         btnConnect = new javax.swing.JButton();
         btnDisconnect = new javax.swing.JButton();
         jScrollPane1 = new javax.swing.JScrollPane();
-        txtAreaOutput = new javax.swing.JTextArea();
+        ta_client = new javax.swing.JTextArea();
         jLabel1 = new javax.swing.JLabel();
         txtMsg = new javax.swing.JTextField();
         btnSendMsg = new javax.swing.JButton();
@@ -170,8 +171,7 @@ public class ClientForm extends JFrame{
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        //lblMainTitle.setFont(new java.awt.Font("Lucida Grande", 0, 24)); // NOI18N
-        lblMainTitle.setFont(new java.awt.Font("Sitka Small", 1, 28)); // NOI18N
+        lblMainTitle.setFont(new java.awt.Font("Lucida Grande", 0, 24)); // NOI18N
         lblMainTitle.setText("Laser Tag Device Simulator");
 
         btnConnect.setText("Connect");
@@ -188,10 +188,10 @@ public class ClientForm extends JFrame{
             }
         });
 
-        txtAreaOutput.setColumns(20);
-        txtAreaOutput.setRows(5);
-        txtAreaOutput.setEditable(false);
-        jScrollPane1.setViewportView(txtAreaOutput);
+        ta_client.setColumns(20);
+        ta_client.setRows(5);
+        ta_client.setEditable(false);
+        jScrollPane1.setViewportView(ta_client);
 
         jLabel1.setFont(new java.awt.Font("Tahoma", 1, 11)); // NOI18N
         jLabel1.setText("Communication Log:");
@@ -370,28 +370,24 @@ public class ClientForm extends JFrame{
         );
 
         pack();
-    }
+    }// </editor-fold>//GEN-END:initComponents
+
     
-    private void btnSendMsgActionPerformed(java.awt.event.ActionEvent evt) {
-        
+    private void btnSendMsgActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSendMsgActionPerformed
+        // TODO add your handling code here:
         String nothing = "";
         if ((txtMsg.getText()).equals(nothing)) {
             txtMsg.setText("");
             txtMsg.requestFocus();
         } else {
             try {
-                
-				/*JSONArray arrJSON = new JSONArray();
-				arrJSON.add("message");
-				arrJSON.add(txtMsg.getText());    	         
-				netout.println(arrJSON.toJSONString());
-				netout.flush();*/
-            	
-            	netout.println("message" + "&" + txtMsg.getText());
-				netout.flush();
-				
+               //writer.println(txtMsg.getText());
+               writer.println("message" + "&" + txtMsg.getText());
+               
+               writer.flush(); // flushes the buffer
+               //ta_client.append("Message sent");
             } catch (Exception ex) {
-                txtAreaOutput.append("Message was not sent. \n");
+                ta_client.append("Message was not sent. \n");
             }
             txtMsg.setText("");
             txtMsg.requestFocus();
@@ -399,27 +395,40 @@ public class ClientForm extends JFrame{
 
         txtMsg.setText("");
         txtMsg.requestFocus();
-    }
+    }//GEN-LAST:event_btnSendMsgActionPerformed
 
-    private void btnStartActionPerformed(java.awt.event.ActionEvent evt) {
+    TimerTask repeatedTask = new TimerTask() {
+        public void run() {
+        	if (!stopFlag) {
+        		globalCount++;
+        		writer.println("message" + "&" + String.valueOf(globalCount));
+        		writer.flush(); // flushes the buffer
+        	}
+        }
+    };
+
+    private void btnStartActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSendMsgActionPerformed
+        // TODO add your handling code here:
         
     	stopFlag = false;
     	
-    }
+    }//GEN-LAST:event_btnSendMsgActionPerformed
 
-    private void btnStopActionPerformed(java.awt.event.ActionEvent evt) {
-        
+    private void btnStopActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSendMsgActionPerformed
+        // TODO add your handling code here:
+    	
     	stopFlag = true;
     	
-    }
+    }//GEN-LAST:event_btnSendMsgActionPerformed
+    
     
     private void btnConnectActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConnectActionPerformed
         if (isConnected == false) 
         {
-        	serverIP = txtIPAddress.getText();
+        	ipAddress = txtIPAddress.getText();
             gunName = txtGunName.getText();
-            softwareVersion = txtSoftwareVersion.getText();
-            deviceType = txtDeviceType.getText();
+            softVersion = txtSoftwareVersion.getText();
+            devType = txtDeviceType.getText();
             
             txtIPAddress.setEditable(false);
             txtDeviceType.setEditable(false);
@@ -428,22 +437,13 @@ public class ClientForm extends JFrame{
 
             try 
             {
-            	socket = new Socket(serverIP, serverPort);
-                InputStreamReader streamreader = new InputStreamReader(socket.getInputStream());
-                netin = new BufferedReader(streamreader);
-                netout = new PrintWriter(socket.getOutputStream());
+            	sock = new Socket(ipAddress, port);
+                InputStreamReader streamreader = new InputStreamReader(sock.getInputStream());
+                reader = new BufferedReader(streamreader);
+                writer = new PrintWriter(sock.getOutputStream());
                 
-                /*JSONArray arrJSON = new JSONArray();
-				arrJSON.add("connection");
-				arrJSON.add(gunName);
-				arrJSON.add(softwareVersion);
-				arrJSON.add(deviceType);				
-				netout.println(arrJSON.toJSONString());
-        		netout.flush();*/
-                
-                netout.println("connection" + "&" + gunName + "&" + softwareVersion + "&" + deviceType);
-        		netout.flush();
-        		
+                writer.println("connection" + "&" + gunName + "&" + softVersion + "&" + devType);
+                writer.flush(); 
                 isConnected = true;
                 
                 btnConnect.setEnabled(false);
@@ -454,7 +454,7 @@ public class ClientForm extends JFrame{
             } 
             catch (Exception ex) 
             {
-                txtAreaOutput.append("Cannot Connect! Try Again. \n");
+                ta_client.append("Cannot Connect! Try Again. \n");
                 txtIPAddress.setEditable(true);
                 txtDeviceType.setEditable(true);
                 txtGunName.setEditable(true);
@@ -471,17 +471,24 @@ public class ClientForm extends JFrame{
             
         } else if (isConnected == true) 
         {
-            txtAreaOutput.append("You are already connected. \n");
+            ta_client.append("You are already connected. \n");
         }
-    }
+    }//GEN-LAST:event_btnConnectActionPerformed
 
-    private void btnDisconnectActionPerformed(java.awt.event.ActionEvent evt) {
+    private void btnDisconnectActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDisconnectActionPerformed
         sendDisconnect();
         Disconnect();
-    }
+    }//GEN-LAST:event_btnDisconnectActionPerformed
 
+    /**
+     * @param args the command line arguments
+     */
     public static void main(String args[]) {
-        
+        /* Set the Nimbus look and feel */
+        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
+        /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.
+         * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
+         */
         try {
             for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
                 if ("Nimbus".equals(info.getName())) {
@@ -498,6 +505,8 @@ public class ClientForm extends JFrame{
         } catch (javax.swing.UnsupportedLookAndFeelException ex) {
             java.util.logging.Logger.getLogger(ClientForm.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
+        //</editor-fold>
+        //</editor-fold>
 
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
@@ -524,7 +533,7 @@ public class ClientForm extends JFrame{
     private javax.swing.JLabel lblIPAddress;
     private javax.swing.JLabel lblMainTitle;
     private javax.swing.JLabel lblSoftwareVer;
-    private static javax.swing.JTextArea txtAreaOutput;
+    private static javax.swing.JTextArea ta_client;
     private javax.swing.JTextField txtDeviceType;
     private javax.swing.JTextField txtGunName;
     private javax.swing.JTextField txtIPAddress;
