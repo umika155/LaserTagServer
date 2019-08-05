@@ -1,4 +1,4 @@
-package ConnectionJSON;
+package ConnectionWithoutJSONDB;
 
 import java.net.*;
 import java.io.*;
@@ -41,11 +41,13 @@ public class ClientForm extends JFrame{
         	if (!stopFlag) {
         		globalCount++;
 
-        		JSONArray arrJSON = new JSONArray();
+        		/*JSONArray arrJSON = new JSONArray();
 				arrJSON.add("message");
 				arrJSON.add(String.valueOf(globalCount));
-
 				netout.println(arrJSON.toJSONString());
+        		netout.flush();*/
+        		
+        		netout.println("message" + "&" + String.valueOf(globalCount));
         		netout.flush();
         	}
         }
@@ -61,11 +63,14 @@ public class ClientForm extends JFrame{
     {
         try
         {
-        	JSONArray arrJSON = new JSONArray();
+        	/*JSONArray arrJSON = new JSONArray();
 			arrJSON.add("disconnection");
-
 			netout.println(arrJSON.toJSONString());
-            netout.flush(); 
+            netout.flush();*/
+        	
+        	netout.println("disconnection");
+    		netout.flush();
+            
         } catch (Exception e) 
         {
             txtAreaOutput.append("Could not send disconnect message.\n");
@@ -105,17 +110,29 @@ public class ClientForm extends JFrame{
             {
                 while ((message = netin.readLine()) != null)
                 {
-                    JSONParser parser = new JSONParser();
+                    /*JSONParser parser = new JSONParser();
         	        JSONArray arrJSON = (JSONArray) parser.parse(message);
 
-        	        if(arrJSON.size() != 0) {
+                	if(arrJSON.size() != 0) {
     					txtAreaOutput.append("Received from server:\n");
                 		for(int i = 0; i < arrJSON.size(); i++) {
                 			if(!arrJSON.get(i).equals("")) {                				
                 				txtAreaOutput.append(arrJSON.get(i) + "\n");   
                 			}
                 		}
-                	}
+                	}*/
+                	
+                	
+                	String[] data = message.split("&");
+                	
+        	        if(data.length != 0) {
+						txtAreaOutput.append("Received from server3:\n");
+	            		for(int i = 0; i < data.length; i++) {
+	            			if(!data[i].equals("")) {                				
+	            				txtAreaOutput.append(data[i] + "\n");   
+	            			}
+	            		}
+            		}
 
                 }
            } catch(Exception ex) { }
@@ -364,12 +381,15 @@ public class ClientForm extends JFrame{
         } else {
             try {
                 
-				JSONArray arrJSON = new JSONArray();
+				/*JSONArray arrJSON = new JSONArray();
 				arrJSON.add("message");
-				arrJSON.add(txtMsg.getText());
-    	         
+				arrJSON.add(txtMsg.getText());    	         
 				netout.println(arrJSON.toJSONString());
+				netout.flush();*/
+            	
+            	netout.println("message" + "&" + txtMsg.getText());
 				netout.flush();
+				
             } catch (Exception ex) {
                 txtAreaOutput.append("Message was not sent. \n");
             }
@@ -413,14 +433,17 @@ public class ClientForm extends JFrame{
                 netin = new BufferedReader(streamreader);
                 netout = new PrintWriter(socket.getOutputStream());
                 
-                JSONArray arrJSON = new JSONArray();
+                /*JSONArray arrJSON = new JSONArray();
 				arrJSON.add("connection");
 				arrJSON.add(gunName);
 				arrJSON.add(softwareVersion);
-				arrJSON.add(deviceType);
-				
+				arrJSON.add(deviceType);				
 				netout.println(arrJSON.toJSONString());
-        		netout.flush(); 
+        		netout.flush();*/
+                
+                netout.println("connection" + "&" + gunName + "&" + softwareVersion + "&" + deviceType);
+        		netout.flush();
+        		
                 isConnected = true;
                 
                 btnConnect.setEnabled(false);

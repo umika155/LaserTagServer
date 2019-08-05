@@ -1,4 +1,4 @@
-package Connection;
+package ConnectionWithoutJSONDB;
 
 import java.awt.Color;
 import java.awt.event.ActionEvent;
@@ -22,16 +22,19 @@ public class Server extends javax.swing.JFrame {
     DefaultTableModel tableModel;
     Statement dbStatement;
     
+    Vector<Thread> threads = new Vector<Thread>();
+    Vector<ClientHandler> clientHandlers = new Vector<ClientHandler>();
+    
     public Server() {
     	
     	initComponents();
         try {
         	
-        	Class.forName("com.mysql.jdbc.Driver");  
+        	/*Class.forName("com.mysql.jdbc.Driver");  
     		Connection con=DriverManager.getConnection("jdbc:mysql:///lasertagdb","root","");  
-    		dbStatement=con.createStatement();  
+    		dbStatement=con.createStatement();*/
     		
-    		Thread starter = new Thread(new ServerStart());
+        	Thread starter = new Thread(new ServerStart());
             starter.start();
         
             btnSendtoSelect.setEnabled(true);
@@ -59,14 +62,19 @@ public class Server extends javax.swing.JFrame {
                 while (true) 
                 {
                     //Accept a new connection
-                    Socket clientSock = serverSock.accept();
-                    
+                    Socket clientSocket = serverSock.accept();
+                    //clientSocket.setSoTimeout(3000);
+
                     //Create a new thread object
-                    Thread listener = new Thread(new ClientHandler(clientSock));
+                    ClientHandler clientHandler = new ClientHandler(clientSocket);
+                    clientHandlers.add(clientHandler);
+                    
+                    Thread listener = new Thread(clientHandler);
+                    threads.add(listener);
                     
                     //Invoke start() method for thread
                     listener.start();
-                    txtAreaOutputAppendAtLast(clientSock + ": is in connection. ");
+                    txtAreaOutputAppendAtLast(clientSocket + ": is in connection. ");
                 }
                 
             } catch (Exception e) {
@@ -82,23 +90,63 @@ public class Server extends javax.swing.JFrame {
         BufferedReader netin;
         PrintWriter netout;
         
+        boolean stopFlag = false;
+        
         String clientIP = "";
         String gunName = "";
         String softwareVersion = "";
         String deviceType = "";
+        
+        //public String message;
         
         //Constructor
         public ClientHandler(Socket clientSocket) {
         	
             try {
             	
-                socket = clientSocket;
-                
-                //Add a client socket in the vector named clientSockets
-                clientSockets.add(socket);
+            	socket = clientSocket;
                 
                 //Get client IP Address
                 clientIP = socket.getInetAddress().getHostAddress();
+                
+                Socket socket1;            	
+                for(int i = 0; i < clientSockets.size(); i++) {
+                	socket1 = clientSockets.get(i);
+                	if(socket1.getInetAddress().getHostAddress().equals(clientIP)) {
+                		tableModel.removeRow(i);
+                		clientSockets.remove(socket1);
+                		txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
+                		
+                		txtAreaOutputAppendAtLast("1. Before interrupt--------");
+        				for(Thread t : Thread.getAllStackTraces().keySet()) {
+        					txtAreaOutputAppendAtLast(t.getName());
+        				}
+    					txtAreaOutputAppendAtLast("--------");
+        				
+    					//clientHandlers.get(i).netin = null;
+    					//socket1.close();
+    					//socket1.setSoTimeout(1000);
+
+    					for(Thread t : Thread.getAllStackTraces().keySet()) {
+        					if(t.getId() == threads.get(i).getId()) {
+        						threads.remove(i);
+            					t.interrupt();
+        						break;
+            			    }
+            			}
+    					
+    					txtAreaOutputAppendAtLast("2. After interrupt--------");
+        				for(Thread t : Thread.getAllStackTraces().keySet()) {
+        					txtAreaOutputAppendAtLast(t.getName());
+        				}
+    					txtAreaOutputAppendAtLast("--------");
+
+                	}
+                	
+                }
+                
+                //Add a client socket in the vector named clientSockets
+                clientSockets.add(socket);
                 
                 //Get a input stream of the client socket
                 netin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -112,14 +160,15 @@ public class Server extends javax.swing.JFrame {
             }
 
         }
-
+        
         public void run() {
         	
             String message;            
             try {
             	
-            	while ((message = netin.readLine()) != null) {
-        	        
+            	//while (!Thread.currentThread().isInterrupted()) {
+            	while ((message = netin.readLine())!=null) {            		
+            		
             		String[] data = message.split("&");
             		
             		Vector<Object> tableRow = new Vector<Object>();
@@ -151,31 +200,35 @@ public class Server extends javax.swing.JFrame {
                     	
                     } else if (data[0].equals("message")) {
                         
-                        tableModel.setValueAt(data[1], clientSockets.indexOf(socket), 5);
+                    	txtAreaOutputAppendAtLast("Data:" + Thread.currentThread().getId() + message);
+                		tableModel.setValueAt(data[1], clientSockets.indexOf(socket), 5);
                         
-                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + data[1] + "");
+                        txtAreaOutputAppendAtLast("RX - " + clientIP + " - " + Thread.currentThread().getId() + "-" + data[1] + "");
                         
-                        SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         String date = dateformat.format(new java.util.Date());
                         
                         String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, receivemessage, receiveat)" + 
                         			   " VALUES('" + clientIP + "', '" + gunName + "', '" + softwareVersion + "', '" + deviceType + "', '" + data[1] + "', '" + (date) + "')";
-                        dbStatement.executeUpdate(query);
+                        dbStatement.executeUpdate(query);*/
                         
-                        netout.println(data[1]);
-                        netout.flush();
+                        //netout.println(data[1]);
+                        //netout.flush();
+                        
+                        //netout.println((byte)0);
+                        //netout.flush();
             			
                     }
-                    
             	}
+            	txtAreaOutputAppendAtLast("Stop Thread.");
             	
             } catch (Exception ex) {
-            	
-            	 tableModel.removeRow(clientSockets.indexOf(socket));
-     			 clientSockets.remove(socket);
-     			
-     			 txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
-            } 
+            	 txtAreaOutputAppendAtLast("Run Exception:" + Thread.currentThread().getId() + "-" + ex);
+				
+            	 //tableModel.removeRow(clientSockets.indexOf(socket));
+     			 //clientSockets.remove(socket);     			
+     			 //txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
+            }
         }
     }
     
@@ -445,12 +498,12 @@ public class Server extends javax.swing.JFrame {
             	String clientIP = socket.getInetAddress().getHostAddress();
             	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + firstVal + " " + secondVal + " " + thirdVal);
 
-                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 String date = dateformat.format(new java.util.Date());
                 
                 String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
                 			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);
+                dbStatement.executeUpdate(query);*/
                 
 				/*
                 JSONArray arrJSON = new JSONArray();
@@ -486,12 +539,12 @@ public class Server extends javax.swing.JFrame {
             	String clientIP = socket.getInetAddress().getHostAddress();
             	txtAreaOutputAppendAtLast("TX - EVERYONE - " + firstVal + " " + secondVal + " " + thirdVal);
 
-                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 String date = dateformat.format(new java.util.Date());
                 
                 String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
                 			   " VALUES('" + clientIP + "', '', '', '', '" + firstVal + " " + secondVal + " " + thirdVal + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);
+                dbStatement.executeUpdate(query);*/
 
 				/*JSONArray arrJSON = new JSONArray();
 				arrJSON.add(firstVal);
@@ -526,12 +579,12 @@ public class Server extends javax.swing.JFrame {
             	String clientIP = socket.getInetAddress().getHostAddress();
             	txtAreaOutputAppendAtLast("TX - " + clientIP + " - " + message);
             	
-                SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                /*SimpleDateFormat dateformat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 String date = dateformat.format(new java.util.Date());
                 
                 String query = "INSERT INTO messages(ipaddress, gunname, softversion, devtype, sendmessage, sendat)" + 
                 			   " VALUES('" + clientIP + "', '', '', '', '" + message + "', '" + (date) + "')";
-                dbStatement.executeUpdate(query);
+                dbStatement.executeUpdate(query);*/
                 
 				/*JSONArray arrJSON = new JSONArray();
 				arrJSON.add(message);				
@@ -572,7 +625,9 @@ public class Server extends javax.swing.JFrame {
             public void run() {
             	
             	Server server = new Server();
-            	Login login = new Login(server);
+            	server.setVisible(true);
+				
+            	//Login login = new Login(server);
             	
             }
         });
