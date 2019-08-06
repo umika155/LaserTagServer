@@ -5,6 +5,9 @@ import java.awt.event.ActionEvent;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 
@@ -83,11 +86,43 @@ public class Server extends javax.swing.JFrame {
             }
         }
     }
-   
+    
+    public class CancelableReader extends BufferedReader {
+
+        private final ExecutorService executor;
+        private Future future;
+
+        public CancelableReader(Reader in) {
+            super(in);
+            executor = Executors.newSingleThreadExecutor();
+        }
+
+        @Override
+        public String readLine() {
+
+            future = executor.submit(super::readLine);
+
+            try {
+                return (String) future.get();
+            } catch (Exception e) {
+                return null;
+            }
+
+        }
+
+        public void cancelRead() {
+        	txtAreaOutputAppendAtLast(" - Cancel Read.");
+            future.cancel(true);
+        }
+
+    }
+    
     public class ClientHandler implements Runnable {
     	
     	Socket socket;
-        BufferedReader netin;
+        //BufferedReader netin;
+    	
+    	CancelableReader  netin;       	
         PrintWriter netout;
         
         boolean stopFlag = false;
@@ -123,17 +158,20 @@ public class Server extends javax.swing.JFrame {
         				}
     					txtAreaOutputAppendAtLast("--------");
         				
-    					//clientHandlers.get(i).netin = null;
+    					clientHandlers.get(i).netin.cancelRead();
+    					clientHandlers.remove(i);
+    					Thread.sleep(500);
+    					
     					//socket1.close();
     					//socket1.setSoTimeout(1000);
 
-    					for(Thread t : Thread.getAllStackTraces().keySet()) {
+    					/*for(Thread t : Thread.getAllStackTraces().keySet()) {
         					if(t.getId() == threads.get(i).getId()) {
         						threads.remove(i);
             					t.interrupt();
         						break;
             			    }
-            			}
+            			}*/
     					
     					txtAreaOutputAppendAtLast("2. After interrupt--------");
         				for(Thread t : Thread.getAllStackTraces().keySet()) {
@@ -149,8 +187,10 @@ public class Server extends javax.swing.JFrame {
                 clientSockets.add(socket);
                 
                 //Get a input stream of the client socket
-                netin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+                //netin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                
+                netin = new CancelableReader(new BufferedReader(new InputStreamReader(socket.getInputStream())));
+                
                 //Get a output stream of the client socket
                 netout = new PrintWriter(socket.getOutputStream());
 
@@ -166,7 +206,6 @@ public class Server extends javax.swing.JFrame {
             String message;            
             try {
             	
-            	//while (!Thread.currentThread().isInterrupted()) {
             	while ((message = netin.readLine())!=null) {            		
             		
             		String[] data = message.split("&");
