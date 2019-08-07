@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 
@@ -111,8 +112,8 @@ public class Server extends javax.swing.JFrame {
         }
 
         public void cancelRead() {
-        	txtAreaOutputAppendAtLast(" - Cancel Read.");
-            future.cancel(true);
+        	executor.shutdown();
+        	future.cancel(true);
         }
 
     }
@@ -120,9 +121,7 @@ public class Server extends javax.swing.JFrame {
     public class ClientHandler implements Runnable {
     	
     	Socket socket;
-        //BufferedReader netin;
-    	
-    	CancelableReader  netin;       	
+        CancelableReader  netin;       	
         PrintWriter netout;
         
         boolean stopFlag = false;
@@ -132,39 +131,28 @@ public class Server extends javax.swing.JFrame {
         String softwareVersion = "";
         String deviceType = "";
         
-        //public String message;
-        
         //Constructor
         public ClientHandler(Socket clientSocket) {
         	
             try {
             	
-            	socket = clientSocket;
-                
+            	socket = clientSocket;    
+            	
                 //Get client IP Address
                 clientIP = socket.getInetAddress().getHostAddress();
                 
-                Socket socket1;            	
+                Socket tempSocket;            	
                 for(int i = 0; i < clientSockets.size(); i++) {
-                	socket1 = clientSockets.get(i);
-                	if(socket1.getInetAddress().getHostAddress().equals(clientIP)) {
+                	tempSocket = clientSockets.get(i);
+                	if(tempSocket.getInetAddress().getHostAddress().equals(clientIP)) {
                 		tableModel.removeRow(i);
-                		clientSockets.remove(socket1);
+                		clientSockets.remove(tempSocket);
                 		txtAreaOutputAppendAtLast(clientIP + " - Disconnected.");
                 		
-                		txtAreaOutputAppendAtLast("1. Before interrupt--------");
-        				for(Thread t : Thread.getAllStackTraces().keySet()) {
-        					txtAreaOutputAppendAtLast(t.getName());
-        				}
-    					txtAreaOutputAppendAtLast("--------");
-        				
+                		tempSocket.close();
     					clientHandlers.get(i).netin.cancelRead();
     					clientHandlers.remove(i);
-    					Thread.sleep(500);
     					
-    					//socket1.close();
-    					//socket1.setSoTimeout(1000);
-
     					/*for(Thread t : Thread.getAllStackTraces().keySet()) {
         					if(t.getId() == threads.get(i).getId()) {
         						threads.remove(i);
@@ -172,13 +160,6 @@ public class Server extends javax.swing.JFrame {
         						break;
             			    }
             			}*/
-    					
-    					txtAreaOutputAppendAtLast("2. After interrupt--------");
-        				for(Thread t : Thread.getAllStackTraces().keySet()) {
-        					txtAreaOutputAppendAtLast(t.getName());
-        				}
-    					txtAreaOutputAppendAtLast("--------");
-
                 	}
                 	
                 }
@@ -187,8 +168,6 @@ public class Server extends javax.swing.JFrame {
                 clientSockets.add(socket);
                 
                 //Get a input stream of the client socket
-                //netin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                
                 netin = new CancelableReader(new BufferedReader(new InputStreamReader(socket.getInputStream())));
                 
                 //Get a output stream of the client socket
@@ -253,13 +232,9 @@ public class Server extends javax.swing.JFrame {
                         
                         //netout.println(data[1]);
                         //netout.flush();
-                        
-                        //netout.println((byte)0);
-                        //netout.flush();
             			
                     }
             	}
-            	txtAreaOutputAppendAtLast("Stop Thread.");
             	
             } catch (Exception ex) {
             	 txtAreaOutputAppendAtLast("Run Exception:" + Thread.currentThread().getId() + "-" + ex);
